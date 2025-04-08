@@ -2,3 +2,6 @@ streamlit
 numpy
 librosa
 torch
+soundfile
+audioread
+ffmpeg-python

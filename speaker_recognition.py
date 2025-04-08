@@ -12,7 +12,6 @@ class AudioConfig:
     n_mfcc: int = 40
     sequence_length: int = 100  # in frames
 
-
 @dataclass
 class ModelConfig:
     """LSTM model configuration"""
