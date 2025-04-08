@@ -1,10 +1,12 @@
-import streamlit as st
-import numpy as np
+import os
 import time
+
+import numpy as np
+import streamlit as st
+
+from speaker_recognition import AudioConfig, ModelConfig
 from speaker_recognition import SpeakerIdentificationModel
 from speaker_recognition import extract_mfcc_features, get_embedding, cosine_similarity
-from speaker_recognition import AudioConfig, ModelConfig
-import os
 
 # Set page configuration
 st.set_page_config(
@@ -74,13 +76,13 @@ enrolled_speakers = st.session_state['enrolled_speakers']
 
 # Sample audio paths
 SAMPLE_AUDIO_PATHS = {
-    "speaker_1": [
+    "Speaker 1": [
         "sample_audio/speaker_1/speaker1_sample_01.flac",
         "sample_audio/speaker_1/speaker1_sample_02.flac",
         "sample_audio/speaker_1/speaker1_sample_03.flac",
         "sample_audio/speaker_1/speaker1_sample_04.flac",
     ],
-    "speaker_2": [
+    "Speaker 2": [
         "sample_audio/speaker_2/speaker2_sample_01.flac",
         "sample_audio/speaker_2/speaker2_sample_02.flac",
         "sample_audio/speaker_2/speaker2_sample_03.flac",
@@ -93,12 +95,13 @@ SAMPLE_AUDIO_PATHS = {
 def enroll_speaker(speaker_name, audio_files):
     embeddings = []
     for audio_file in audio_files:
-        if isinstance(audio_file, str):  # For preloaded file paths
-            features = extract_mfcc_features(audio_file, audio_config)
-        else:  # For uploaded files
-            features = extract_mfcc_features(audio_file.read(), audio_config)
-        embedding = get_embedding(features, model)
-        embeddings.append(embedding)
+        features = extract_mfcc_features(audio_file, audio_config)
+        max_length = audio_config.sequence_length
+        while features.shape[0] >= max_length:
+            segment_features = features[:max_length]
+            features = features[max_length:]
+            embedding = get_embedding(segment_features, model)
+            embeddings.append(embedding)
     avg_embedding = np.mean(embeddings, axis=0)
     enrolled_speakers[speaker_name] = avg_embedding
     return avg_embedding
@@ -106,10 +109,7 @@ def enroll_speaker(speaker_name, audio_files):
 
 # Verify a speaker
 def verify_speaker(audio_file, enrolled_embedding, threshold=0.7):
-    if isinstance(audio_file, str):  # For preloaded file paths
-        features = extract_mfcc_features(audio_file, audio_config)
-    else:  # For uploaded files
-        features = extract_mfcc_features(audio_file.read(), audio_config)
+    features = extract_mfcc_features(audio_file, audio_config)
     test_embedding = get_embedding(features, model)
     similarity = cosine_similarity(test_embedding, enrolled_embedding)
     return similarity >= threshold, similarity
@@ -118,49 +118,52 @@ def verify_speaker(audio_file, enrolled_embedding, threshold=0.7):
 # Streamlit app title
 st.title("Speaker Verification System")
 
+# Display footer
+st.markdown(footer_html, unsafe_allow_html=True)
+
 # Instructions section
-with st.expander("How to Use This App", expanded=False):
+with st.expander("How to use this app", expanded=False):
     st.markdown("""
-    ### Simple Instructions
     1. **Enroll a Speaker**:
-       - Go to the "Enroll Speaker" tab.
        - Enter a name or preload sample speakers from the sidebar.
        - Upload audio files or use preloaded samples, then click "Enroll".
     2. **Verify a Speaker**:
-       - Go to the "Verify Speaker" tab.
        - Select an enrolled speaker.
        - Upload an audio or select a sample, then click "Verify".
     3. **Sample Audios**:
-       - Download or preload sample audio files from the sidebar for testing.
-    - **Tips**:
+       - Download or preload sample audio files from the **Sidebar** for testing.
+    ---
+    **Tips:**
     - Use clear audio files for best results.
     - Enroll multiple samples of a speaker’s voice for better accuracy.
     """)
 
 # Sidebar for sample audio management
 st.sidebar.subheader("Sample Audios")
+st.sidebar.markdown("""> Tap to download file.""")
 for speaker, files in SAMPLE_AUDIO_PATHS.items():
-    with st.sidebar.expander(f"{speaker} Samples"):
+    with st.sidebar.expander(f"{speaker}"):
         for file_path in files:
-            if os.path.exists(file_path):
-                file_name = os.path.basename(file_path)
-                with open(file_path, "rb") as f:
-                    st.download_button(
-                        label=f"Download {file_name}",
-                        data=f,
-                        file_name=file_name,
-                        mime="audio/flac"
-                    )
-            else:
-                st.warning(f"File {file_path} not found.")
+            file_name = os.path.basename(file_path)
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    label=f"{file_name}",
+                    data=f,
+                    file_name=file_name,
+                    mime="audio/flac"
+                )
+st.sidebar.markdown("""> Or""")
 
 # Option to preload sample speakers
-if st.sidebar.button("Preload Sample Speakers"):
-    with st.spinner("Preloading sample speakers..."):
+if st.sidebar.button("Enroll sample speakers"):
+    enroll_placeholder = st.sidebar.empty()
+    with enroll_placeholder.container():
+        st.markdown(spinner_html, unsafe_allow_html=True)
         for speaker, files in SAMPLE_AUDIO_PATHS.items():
-            if speaker not in enrolled_speakers and all(os.path.exists(f) for f in files):
+            if speaker not in enrolled_speakers:
                 enroll_speaker(speaker, files)
-        st.sidebar.success("Sample speakers preloaded!")
+    enroll_placeholder.empty()
+    st.sidebar.success("Sample speakers enrolled!")
 
 # Tabs for enrollment and verification
 tab1, tab2 = st.tabs(["Enroll Speaker", "Verify Speaker"])
@@ -212,16 +215,10 @@ with tab2:
                         # Find the full path for the selected sample
                         audio_file = next(f for files in SAMPLE_AUDIO_PATHS.values() for f in files if
                                           os.path.basename(f) == sample_verify_file)
-                        if os.path.exists(audio_file):
-                            is_match, similarity = verify_speaker(audio_file, enrolled_speakers[selected_speaker],
-                                                                  0.5320)
-                        else:
-                            verify_placeholder.empty()
-                            with verify_placeholder.container():
-                                st.error(f"Sample file {sample_verify_file} not found.")
-                                st.stop()
+                        test_file = audio_file
                     else:
-                        is_match, similarity = verify_speaker(verify_file, enrolled_speakers[selected_speaker], 0.5320)
+                        test_file = verify_file
+                    is_match, similarity = verify_speaker(test_file, enrolled_speakers[selected_speaker], 0.5320)
                     time.sleep(0.25)  # Artificial delay for effect
                 verify_placeholder.empty()
                 with verify_placeholder.container():
@@ -239,9 +236,7 @@ with tab2:
 
 # Display enrolled speakers
 if enrolled_speakers:
+    st.sidebar.markdown("---")
     st.sidebar.subheader("Enrolled Speakers")
     for speaker in enrolled_speakers.keys():
         st.sidebar.write(f"- {speaker}")
-
-# Display footer
-st.markdown(footer_html, unsafe_allow_html=True)

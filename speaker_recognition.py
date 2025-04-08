@@ -1,8 +1,9 @@
 from dataclasses import dataclass
+
+import librosa
 import numpy as np
 import torch
 import torch.nn as nn
-import librosa
 
 
 @dataclass
@@ -12,6 +13,7 @@ class AudioConfig:
     n_mfcc: int = 40
     sequence_length: int = 100  # in frames
 
+
 @dataclass
 class ModelConfig:
     """LSTM model configuration"""
@@ -19,6 +21,7 @@ class ModelConfig:
     hidden_size: int = 64
     batch_size: int = 8
     learning_rate: float = 0.0001
+
 
 class SpeakerIdentificationModel(nn.Module):
     """LSTM-based speaker identification model"""
@@ -55,11 +58,13 @@ class SpeakerIdentificationModel(nn.Module):
         output, _ = self.lstm(x, (h0, c0))
         return torch.mean(output, dim=1)
 
+
 def extract_mfcc_features(file_path: str, config: AudioConfig) -> np.ndarray:
     """Extract MFCC features from audio file"""
     audio, _ = librosa.load(file_path, sr=config.sample_rate, mono=True)
     mfcc = librosa.feature.mfcc(y=audio, sr=config.sample_rate, n_mfcc=config.n_mfcc)
     return mfcc.transpose()
+
 
 def get_embedding(features: np.ndarray, model: SpeakerIdentificationModel) -> np.ndarray:
     """Get embedding of an utterance using the model"""
