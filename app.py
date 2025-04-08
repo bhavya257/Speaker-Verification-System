@@ -132,7 +132,7 @@ with st.expander("How to Use This App", expanded=False):
        - Upload an audio or select a sample, then click "Verify".
     3. **Sample Audios**:
        - Download or preload sample audio files from the sidebar for testing.
-    **Tips**:
+    - **Tips**:
     - Use clear audio files for best results.
     - Enroll multiple samples of a speaker’s voice for better accuracy.
     """)
